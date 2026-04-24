@@ -327,7 +327,21 @@ class PaladinMLModel:
             "model_results": results,
             "avg_accuracy":  float(np.mean(list(results.values()))) if results else 0
         }
-        
+        self.stats = {
+    "trained_at":    datetime.now().isoformat(),
+    "n_samples":     len(X),
+    "n_features":    len(feature_cols),
+    "model_results": results,
+    "avg_accuracy":  float(np.mean(list(results.values()))) if results else 0
+}
+
+# ŞİMDİ BU VERİYİ DOSYAYA YAZALIM (Kritik Nokta)
+try:
+    with open('ml_results.json', 'w') as f:
+        json.dump(self.stats, f, indent=2)
+    print("✅ İstatistikler ml_results.json dosyasına başarıyla kaydedildi.")
+except Exception as e:
+    print(f"❌ Dosya yazma hatası: {e}")
         print(f"\n🏆 Ortalama Doğruluk: %{self.stats['avg_accuracy']*100:.1f}")
         return self.stats
     
@@ -440,3 +454,4 @@ def predict_stock(ticker: str) -> dict:
         return {"error": "Yetersiz veri"}
     
     return model.predict(df_feat)
+    
