@@ -11,10 +11,10 @@ warnings.filterwarnings("ignore")
 # ══════════════════════════════
 # KLASÖR YAPISI KONFİGÜRASYONU
 # ══════════════════════════════
-BASE_DIR        = "/home/bgul323/paladin"
+BASE_DIR        = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR        = os.path.join(BASE_DIR, "data")
 ML_RESULTS_DIR  = os.path.join(BASE_DIR, "ml_results")
-TMP_DIR         = "/tmp"
+TMP_DIR         = os.path.join(BASE_DIR, "tmp")
 
 # Dosya Yolları
 ML_RESULTS_FILE = os.path.join(BASE_DIR, "ml_results.json")
