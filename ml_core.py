@@ -5,7 +5,52 @@ XGBoost + LightGBM + Neural Network ensemble
 import os
 import json
 import warnings
+import shutil
 warnings.filterwarnings("ignore")
+
+# ══════════════════════════════
+# KLASÖR YAPISI KONFİGÜRASYONU
+# ══════════════════════════════
+BASE_DIR        = "/home/bgul323/paladin"
+DATA_DIR        = os.path.join(BASE_DIR, "data")
+ML_RESULTS_DIR  = os.path.join(BASE_DIR, "ml_results")
+TMP_DIR         = "/tmp"
+
+# Dosya Yolları
+ML_RESULTS_FILE = os.path.join(BASE_DIR, "ml_results.json")
+MODEL_STATS_FILE= os.path.join(BASE_DIR, "model_stats.json")
+TRAINED_MODEL   = os.path.join(BASE_DIR, "trained_model.joblib")
+
+# Klasörleri otomatik oluştur
+for folder in [BASE_DIR, DATA_DIR, ML_RESULTS_DIR, TMP_DIR]:
+    os.makedirs(folder, exist_ok=True)
+
+# XGBoost ve ML kütüphaneleri için TMP klasörünü ayarla
+os.environ['TMPDIR'] = TMP_DIR
+os.environ['TEMP'] = TMP_DIR
+os.environ['TMP'] = TMP_DIR
+os.environ['XGBOOST_TMPDIR'] = TMP_DIR
+
+def cleanup_ml_results():
+    """ml_results klasöründeki eski model kalıntılarını temizle"""
+    try:
+        deleted = 0
+        for filename in os.listdir(ML_RESULTS_DIR):
+            if filename.startswith("old_") or filename.endswith(".tmp"):
+                file_path = os.path.join(ML_RESULTS_DIR, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                        deleted += 1
+                except:
+                    pass
+        if deleted > 0:
+            print(f"🧹 Temizlik tamamlandı: {deleted} eski dosya silindi")
+    except Exception as e:
+        print(f"Temizlik hatası: {e}")
+
+# Başlangıçta temizlik çalıştır
+cleanup_ml_results()
 
 import numpy as np
 import pandas as pd
@@ -327,21 +372,7 @@ class PaladinMLModel:
             "model_results": results,
             "avg_accuracy":  float(np.mean(list(results.values()))) if results else 0
         }
-        self.stats = {
-    "trained_at":    datetime.now().isoformat(),
-    "n_samples":     len(X),
-    "n_features":    len(feature_cols),
-    "model_results": results,
-    "avg_accuracy":  float(np.mean(list(results.values()))) if results else 0
-}
-
-# ŞİMDİ BU VERİYİ DOSYAYA YAZALIM (Kritik Nokta)
-try:
-    with open('ml_results.json', 'w') as f:
-        json.dump(self.stats, f, indent=2)
-    print("✅ İstatistikler ml_results.json dosyasına başarıyla kaydedildi.")
-except Exception as e:
-    print(f"❌ Dosya yazma hatası: {e}")
+        
         print(f"\n🏆 Ortalama Doğruluk: %{self.stats['avg_accuracy']*100:.1f}")
         return self.stats
     
@@ -398,22 +429,68 @@ except Exception as e:
             return {"error": str(e)}
     
     def save(self):
-        """Model istatistiklerini kaydet"""
+        """Model istatistiklerini kaydet - ml_results.json ve model_stats.json ikisine birden yaz"""
         try:
-            with open(self.model_file, "w") as f:
+            # Ana sonuç dosyası
+            with open(ML_RESULTS_FILE, "w") as f:
                 json.dump(self.stats, f, indent=2)
+            
+            # Yedek istatistik dosyası
+            with open(MODEL_STATS_FILE, "w") as f:
+                json.dump(self.stats, f, indent=2)
+            
+            print(f"✅ Sonuçlar kaydedildi: {ML_RESULTS_FILE}")
+            
+            # Gerçek model nesnesini joblib ile kaydet
+            try:
+                import joblib
+                model_data = {
+                    "xgb_model": self.xgb_model,
+                    "lgbm_model": self.lgbm_model,
+                    "rf_model": self.rf_model,
+                    "feature_cols": self.feature_cols,
+                    "stats": self.stats
+                }
+                joblib.dump(model_data, TRAINED_MODEL, compress=3)
+                print(f"✅ Eğitilmiş model kaydedildi: {TRAINED_MODEL}")
+            except Exception as je:
+                print(f"⚠️ Model dosyası kaydedilemedi: {je}")
+                
         except Exception as e:
-            print(f"Model save: {e}")
+            print(f"Model save hatası: {e}")
     
     def load_stats(self) -> dict:
         """Kaydedilmiş istatistikleri yükle"""
         try:
-            if os.path.exists(self.model_file):
-                with open(self.model_file, "r") as f:
+            # Öncelikli ml_results.json'dan yükle
+            if os.path.exists(ML_RESULTS_FILE):
+                with open(ML_RESULTS_FILE, "r") as f:
+                    return json.load(f)
+            # Yoksa yedek dosyadan dene
+            elif os.path.exists(MODEL_STATS_FILE):
+                with open(MODEL_STATS_FILE, "r") as f:
                     return json.load(f)
         except:
             pass
         return {}
+    
+    def load_model(self):
+        """Kaydedilmiş eğitilmiş modeli yükle"""
+        try:
+            import joblib
+            if os.path.exists(TRAINED_MODEL):
+                model_data = joblib.load(TRAINED_MODEL)
+                self.xgb_model = model_data.get("xgb_model")
+                self.lgbm_model = model_data.get("lgbm_model")
+                self.rf_model = model_data.get("rf_model")
+                self.feature_cols = model_data.get("feature_cols")
+                self.stats = model_data.get("stats", {})
+                self.is_trained = True
+                print(f"✅ Kaydedilmiş model yüklendi: {TRAINED_MODEL}")
+                return True
+        except Exception as e:
+            print(f"⚠️ Model yüklenemedi: {e}")
+        return False
 
 # Global model instance
 _ml_model = PaladinMLModel()
@@ -454,4 +531,3 @@ def predict_stock(ticker: str) -> dict:
         return {"error": "Yetersiz veri"}
     
     return model.predict(df_feat)
-    
