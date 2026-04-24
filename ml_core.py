@@ -364,13 +364,20 @@ class PaladinMLModel:
         except Exception as e:
             print(f"❌ RF hatası: {e}")
         
+        # EĞER HİÇBİR MODEL ÇALIŞMADIYSA EĞİTİLMEDİ SAY
+        if not results:
+            self.is_trained = False
+            self.stats = {}
+            print("❌ HİÇBİR MODEL BAŞARIYLA EĞİTİLEMEDİ!")
+            return {"error": "Tüm modeller başarısız oldu. XGBoost, LightGBM kütüphanelerini kontrol edin."}
+        
         self.is_trained = True
         self.stats = {
             "trained_at":    datetime.now().isoformat(),
             "n_samples":     len(X),
             "n_features":    len(feature_cols),
             "model_results": results,
-            "avg_accuracy":  float(np.mean(list(results.values()))) if results else 0
+            "avg_accuracy":  float(np.mean(list(results.values())))
         }
         
         print(f"\n🏆 Ortalama Doğruluk: %{self.stats['avg_accuracy']*100:.1f}")
